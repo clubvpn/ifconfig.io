@@ -1,38 +1,37 @@
-FROM golang:alpine AS builder
+FROM --platform=${BUILDPLATFORM:-linux/amd64} golang:alpine as builder
 
-# Set necessary environmet variables needed for our image
-ENV GO111MODULE=on \
-    CGO_ENABLED=0 \
-    GOOS=linux \
-    GOARCH=amd64
+ARG TARGETPLATFORM
+ARG BUILDPLATFORM
+ARG TARGETOS
+ARG TARGETARCH
 
-# Move to working directory /build
+
+ENV CGO_ENABLED=0
+ENV GO111MODULE=on
+
 WORKDIR /build
 
-# Copy and download dependency using go mod
+# Cache the download before continuing
 COPY go.mod .
 COPY go.sum .
 RUN go mod download
 
-# Copy the code into the container
 COPY main.go .
 
-# Build the application
-RUN go build -tags=jsoniter -o main .
+RUN CGO_ENABLED=${CGO_ENABLED} GOOS=${TARGETOS} GOARCH=${TARGETARCH} \
+  go build -tags=jsoniter -o main .
 
-# Move to /dist directory as the place for resulting binary folder
 WORKDIR /dist
 
-# Copy binary from build to main folder
 RUN cp /build/main .
 
-# Build a small image
-FROM scratch AS production
+FROM --platform=${BUILDPLATFORM:-linux/amd64} gcr.io/distroless/static:nonroot
 
+WORKDIR /
 COPY --from=builder /dist/main /
 COPY ./templates /templates
 COPY ./LICENSE /LICENSE
 
-# Command to run
-ENTRYPOINT ["/main"]
+USER nonroot:nonroot
 
+CMD ["/main"]
